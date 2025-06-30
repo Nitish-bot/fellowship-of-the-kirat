@@ -120,7 +120,7 @@ pub async fn create_token(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     success: false,
-                    error: format!("Failed to create token instruction: {}", e),
+                    error: format!("Failed to create token instruction: {e}"),
                 }),
             ));
         }
@@ -140,7 +140,7 @@ pub async fn create_token(
         success: true,
         data: CreateTokenData {
             program_id: spl_token::id().to_string(),
-            accounts: accounts,
+            accounts,
             instruction_data: bs58::encode(instruction.data).into_string(),
         },
     };
@@ -229,7 +229,7 @@ pub async fn mint_to_token(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     success: false,
-                    error: format!("Failed to create mint to instruction: {}", e),
+                    error: format!("Failed to create mint to instruction: {e}"),
                 }),
             ));
         }
@@ -249,7 +249,7 @@ pub async fn mint_to_token(
         success: true,
         data: MintToData {
             program_id: spl_token::id().to_string(),
-            accounts: accounts,
+            accounts,
             instruction_data: gp::STANDARD.encode(instruction.data),
         },
     };
