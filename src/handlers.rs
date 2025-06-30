@@ -1,6 +1,9 @@
-use axum::{ http::{Error, StatusCode}, response::IntoResponse, Json };
-use serde::{ Serialize, Deserialize };
-use solana_sdk::{pubkey::Pubkey, signature::{Keypair, Signer}};
+use axum::{Json, http::StatusCode, response::IntoResponse};
+use serde::{Deserialize, Serialize};
+use solana_sdk::{
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+};
 use spl_token::instruction;
 use std::str::FromStr;
 
@@ -35,16 +38,17 @@ pub async fn generate_keypair() -> impl IntoResponse {
         data: KeypairData {
             pubkey: bs58pubkey,
             secret: bs58secret,
-    }};
+        },
+    };
 
     (StatusCode::OK, Json(res))
 }
-
 
 // 2. Create SPL Token
 
 #[derive(Deserialize)]
 pub struct CreateTokenRequest {
+    #[serde(rename = "mintAuthority")]
     mint_authority: String,
     mint: String,
     decimals: u8,
@@ -62,7 +66,7 @@ struct CreateTokenData {
     program_id: String,
     accounts: Vec<AccountInfo>,
     instruction_data: String,
-} 
+}
 
 #[derive(Serialize)]
 struct CreateTokenResponse {
@@ -70,31 +74,37 @@ struct CreateTokenResponse {
     data: CreateTokenData,
 }
 
-pub async fn create_token(req: Json<CreateTokenRequest>) -> Result<impl IntoResponse, impl IntoResponse> {
+pub async fn create_token(
+    req: Json<CreateTokenRequest>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
     let mint_auth = match Pubkey::from_str(&req.mint_authority) {
         Ok(pubkey) => pubkey,
         Err(_) => {
-            return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse {
-                success: false,
-                error: "Invalid mint authority pubkey".to_string(),
-            })));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid mint authority pubkey".to_string(),
+                }),
+            ));
         }
     };
 
     let mint_pubkey = match Pubkey::from_str(&req.mint) {
         Ok(pubkey) => pubkey,
         Err(_) => {
-            return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse {
-                success: false,
-                error: "Invalid mint authority pubkey".to_string(),
-            })));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid mint authority pubkey".to_string(),
+                }),
+            ));
         }
     };
 
-    let program_id = spl_token::id();
-
     let instruction = instruction::initialize_mint(
-        &solana_sdk::pubkey::new_rand(),
+        &spl_token::id(),
         &mint_pubkey,
         &mint_auth,
         None,
@@ -104,10 +114,13 @@ pub async fn create_token(req: Json<CreateTokenRequest>) -> Result<impl IntoResp
     let instruction = match instruction {
         Ok(inst) => inst,
         Err(e) => {
-            return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse {
-                success: false,
-                error: format!("Failed to create token instruction: {}", e),
-            })));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: format!("Failed to create token instruction: {}", e),
+                }),
+            ));
         }
     };
 
@@ -123,10 +136,180 @@ pub async fn create_token(req: Json<CreateTokenRequest>) -> Result<impl IntoResp
 
     let res = CreateTokenResponse {
         success: true,
-        data: CreateTokenData { 
+        data: CreateTokenData {
             program_id: spl_token::id().to_string(),
             accounts: accounts,
             instruction_data: bs58::encode(instruction.data).into_string(),
+        },
+    };
+
+    Ok((StatusCode::OK, Json(res)))
+}
+
+#[derive(Deserialize)]
+pub struct MintToRequest {
+    mint: String,
+    destination: String,
+    authority: String,
+    amount: u64,
+}
+
+#[derive(Serialize)]
+pub struct MintToData {
+    program_id: String,
+    accounts: Vec<AccountInfo>,
+    instruction_data: String,
+}
+
+#[derive(Serialize)]
+pub struct MintToResponse {
+    success: bool,
+    data: MintToData,
+}
+
+pub async fn mint_to_token(
+    req: Json<MintToRequest>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let mint_pubkey = match Pubkey::from_str(&req.mint) {
+        Ok(pubkey) => pubkey,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid mint pubkey".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let destination_pubkey = match Pubkey::from_str(&req.destination) {
+        Ok(pubkey) => pubkey,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid destination pubkey".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let authority_pubkey = match Pubkey::from_str(&req.authority) {
+        Ok(pubkey) => pubkey,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid authority pubkey".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let instruction = instruction::mint_to(
+        &spl_token::id(),
+        &mint_pubkey,
+        &destination_pubkey,
+        &authority_pubkey,
+        &[],
+        req.amount,
+    );
+
+    let instruction = match instruction {
+        Ok(inst) => inst,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: format!("Failed to create mint to instruction: {}", e),
+                }),
+            ));
+        }
+    };
+
+    let accounts: Vec<AccountInfo> = instruction
+        .accounts
+        .iter()
+        .map(|acc| AccountInfo {
+            pubkey: acc.pubkey.to_string(),
+            is_signer: acc.is_signer,
+            is_writable: acc.is_writable,
+        })
+        .collect();
+
+    let res = MintToResponse {
+        success: true,
+        data: MintToData {
+            program_id: spl_token::id().to_string(),
+            accounts: accounts,
+            instruction_data: bs58::encode(instruction.data).into_string(),
+        },
+    };
+
+    Ok((StatusCode::OK, Json(res)))
+}
+
+#[derive(Deserialize)]
+pub struct SignMessageRequest {
+    message: String,
+    secret: String,
+}
+
+#[derive(Serialize)]
+pub struct SignMessageData {
+    signature: String,
+    pubkey: String,
+    message: String,
+}
+
+#[derive(Serialize)]
+pub struct SignMessageResponse {
+    success: bool,
+    data: SignMessageData,
+}
+
+pub async fn sign_message(
+    req: Json<SignMessageRequest>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let secret = match bs58::decode(&req.secret).into_vec() {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid secret key".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let keypair = match Keypair::from_bytes(&secret) {
+        Ok(kp) => kp,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Failed to create keypair from secret".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let message = req.message.as_bytes();
+    let signature = keypair.sign_message(message);
+
+    let res = SignMessageResponse {
+        success: true,
+        data: SignMessageData {
+            signature: bs58::encode(signature).into_string(),
+            pubkey: keypair.pubkey().to_string(),
+            message: req.message.clone(),
         },
     };
 
