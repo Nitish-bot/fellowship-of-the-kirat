@@ -1,39 +1,15 @@
+mod handlers;
+
 use axum::{
-    routing::post,
-    Json, Router,
+    routing::post, Router,
 };
-use serde::Serialize;
-use solana_sdk::signature::{Keypair, Signer};
-
-#[derive(Serialize)]
-struct KeypairData {
-    pubkey: String,
-    secret: String,
-}
-
-#[derive(Serialize)]
-struct KeypairResponse {
-    success: bool,
-    data: KeypairData,
-}
-
-async fn generate_keypair() -> Json<KeypairResponse> {
-    let keypair = Keypair::new();
-    let bs58pubkey = keypair.pubkey().to_string();
-    let secret = keypair.to_bytes();
-    let bs58secret = bs58::encode(secret).into_string();
-
-    Json(KeypairResponse {
-        success: true,
-        data: KeypairData {
-            pubkey: bs58pubkey,
-            secret: bs58secret,
-    }})
-}
+use handlers::{ generate_keypair, create_token };
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/keypair", post(generate_keypair));
+    let app = Router::new()
+        .route("/keypair", post(generate_keypair))
+        .route("/token/create", post(create_token));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
