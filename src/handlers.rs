@@ -2,10 +2,12 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
     pubkey::Pubkey,
-    signature::{Keypair, Signer},
+    signature::{ Keypair, Signature },
+    signer::Signer,
 };
 use spl_token::instruction;
 use std::str::FromStr;
+use base64::{engine::general_purpose as gp, Engine as _};
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -146,6 +148,8 @@ pub async fn create_token(
     Ok((StatusCode::OK, Json(res)))
 }
 
+// 3. Mint SPL Token
+
 #[derive(Deserialize)]
 pub struct MintToRequest {
     mint: String,
@@ -246,12 +250,14 @@ pub async fn mint_to_token(
         data: MintToData {
             program_id: spl_token::id().to_string(),
             accounts: accounts,
-            instruction_data: bs58::encode(instruction.data).into_string(),
+            instruction_data: gp::STANDARD.encode(instruction.data),
         },
     };
 
     Ok((StatusCode::OK, Json(res)))
 }
+
+// 4. Sign Message
 
 #[derive(Deserialize)]
 pub struct SignMessageRequest {
@@ -307,9 +313,88 @@ pub async fn sign_message(
     let res = SignMessageResponse {
         success: true,
         data: SignMessageData {
-            signature: bs58::encode(signature).into_string(),
+            signature: gp::STANDARD.encode(signature),
             pubkey: keypair.pubkey().to_string(),
             message: req.message.clone(),
+        },
+    };
+
+    Ok((StatusCode::OK, Json(res)))
+}
+
+// 5. Verify Message
+
+#[derive(Deserialize)]
+pub struct VerifyMessageRequest {
+    message: String,
+    signature: String,
+    pubkey: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyMessageData {
+    valid: bool,
+    message: String,
+    pubkey: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyMessageResponse {
+    success: bool,
+    data: VerifyMessageData,
+}
+
+pub async fn verify_message(
+    req: Json<VerifyMessageRequest>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let pubkey = match Pubkey::from_str(&req.pubkey) {
+        Ok(pubkey) => pubkey,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid pubkey".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let signature_bytes = match bs58::decode(&req.signature).into_vec() {
+        Ok(sig) => sig,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Invalid signature".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let signature = match Signature::try_from(signature_bytes.as_slice()) {
+        Ok(sig) => sig,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "Failed to decode signature".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let message = req.message.as_bytes();
+    let valid = signature.verify(&pubkey.to_bytes(), message);
+
+    let res = VerifyMessageResponse {
+        success: true,
+        data: VerifyMessageData {
+            valid,
+            message: req.message.clone(),
+            pubkey: req.pubkey.clone(),
         },
     };
 

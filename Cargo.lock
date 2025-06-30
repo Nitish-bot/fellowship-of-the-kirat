@@ -727,6 +727,7 @@ name = "fellowship-of-the-kirat"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "bs58",
  "serde",
  "solana-sdk",
