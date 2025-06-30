@@ -1,13 +1,13 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use base64::{Engine as _, engine::general_purpose as gp};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
     pubkey::Pubkey,
-    signature::{ Keypair, Signature },
+    signature::{Keypair, Signature},
     signer::Signer,
 };
 use spl_token::instruction;
 use std::str::FromStr;
-use base64::{engine::general_purpose as gp, Engine as _};
 
 #[derive(Serialize)]
 struct ErrorResponse {
